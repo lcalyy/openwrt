@@ -100,6 +100,7 @@ static struct bh_map button_map[] = {
 	BH_MAP(KEY_WIMAX,		"wwan"),
 	BH_MAP(KEY_WLAN,		"wlan"),
 	BH_MAP(KEY_WPS_BUTTON,		"wps"),
+	BH_MAP(KEY_VENDOR,		"vendor"),
 };
 
 /* -------------------------------------------------------------------------*/
@@ -372,7 +373,7 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 	if (!node)
 		return NULL;
 
-	nbuttons = of_get_child_count(node);
+	nbuttons = of_get_available_child_count(node);
 	if (nbuttons == 0)
 		return ERR_PTR(-EINVAL);
 
@@ -387,7 +388,7 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 	pdata->rep = !!of_get_property(node, "autorepeat", NULL);
 	of_property_read_u32(node, "poll-interval", &pdata->poll_interval);
 
-	for_each_child_of_node(node, pp) {
+	for_each_available_child_of_node(node, pp) {
 		button = (struct gpio_keys_button *)(&pdata->buttons[i++]);
 
 		if (of_property_read_u32(pp, "linux,code", &button->code)) {
@@ -524,10 +525,9 @@ static int gpio_keys_button_probe(struct platform_device *pdev,
 					button->active_low ? GPIOF_ACTIVE_LOW :
 					0), desc);
 				if (error) {
-					if (error != -EPROBE_DEFER) {
-						dev_err(dev, "unable to claim gpio %d, err=%d\n",
-							button->gpio, error);
-					}
+					dev_err_probe(dev, error,
+						      "unable to claim gpio %d",
+						      button->gpio);
 					goto out;
 				}
 
@@ -538,8 +538,9 @@ static int gpio_keys_button_probe(struct platform_device *pdev,
 			struct device_node *child =
 				of_get_next_child(dev->of_node, prev);
 
-			bdata->gpiod = devm_gpiod_get_from_of_node(dev,
-				child, "gpios", 0, GPIOD_IN, desc);
+			bdata->gpiod = devm_fwnode_gpiod_get(dev,
+				of_fwnode_handle(child), NULL, GPIOD_IN,
+				desc);
 
 			prev = child;
 		}
